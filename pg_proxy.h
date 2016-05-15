@@ -39,6 +39,6 @@ ADDRINFO* find_remote_server(char* remotehost, int remoteport);
 
 int add_client(int initsock, ADDRINFO* serverinfo, Client clients[], int* num_clients, int* highest_fd);
 
-int transfer_data(Client client);
+int transfer_data(SOCKET source, SOCKET destination);
 
 void remove_client(Client clients[], int i, int* num_clients);

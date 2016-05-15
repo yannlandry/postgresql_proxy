@@ -8,6 +8,9 @@
 #include "pg_proxy.h"
 
 
+int dostuff() { printf("\nhello there\n"); return 1; }
+
+
 int main (int argc, char *argv[]) {
 	// for debug purposes
 	setbuf(stdout, NULL);
@@ -32,13 +35,16 @@ int main (int argc, char *argv[]) {
 	/* Make a few things regarding the db server */
 	ADDRINFO* serverinfo = find_remote_server(remotehost, remoteport);
 	
-	while(1) {
+	while(dostuff()) {
 		FD_ZERO(&sockset);
 		
 		FD_SET(initsock, &sockset);
-		for(int i = 0; i < num_clients; ++i)
+		for(int i = 0; i < num_clients; ++i) {
 			FD_SET(clients[i].clientsock, &sockset);
+			FD_SET(clients[i].serversock, &sockset);
+		}
 		
+		printf("select...\n");
 		if(select(highest_fd+1, &sockset, NULL, NULL, NULL) < 0) {
 			perror("Error at select");
 			exit(-1);
@@ -56,7 +62,12 @@ int main (int argc, char *argv[]) {
 		else {
 			for(int i = 0; i < num_clients; ++i) {
 				if(FD_ISSET(clients[i].clientsock, &sockset)) {
-					if(transfer_data(clients[i]) == 0) { // 0 -> client disconnected or error
+					if(transfer_data(clients[i].clientsock, clients[i].serversock) == 0) {
+						remove_client(clients, i, &num_clients);
+					}
+				}
+				else if(FD_ISSET(clients[i].serversock, &sockset)) {
+					if(transfer_data(clients[i].serversock, clients[i].clientsock) == 0) {
 						remove_client(clients, i, &num_clients);
 					}
 				}
@@ -157,6 +168,7 @@ int add_client(int initsock, ADDRINFO* serverinfo, Client clients[], int* num_cl
 	
 	// adjust max fd if required
 	*highest_fd = newcsock > *highest_fd ? newcsock : *highest_fd;
+	*highest_fd = newssock > *highest_fd ? newssock : *highest_fd;
 	
 	// create client object
 	Client newc;
@@ -168,46 +180,26 @@ int add_client(int initsock, ADDRINFO* serverinfo, Client clients[], int* num_cl
 }
 
 
-int dostuff() { printf("\nhello there\n"); return 1; }
-
-
-int transfer_data(Client client) {
+int transfer_data(SOCKET source, SOCKET destination) {
 	char buffer[1024];
 	int n = 0, totaln = 0;
 	
-	// from client to server
-	while( dostuff() && (n = recv(client.clientsock, buffer, 15, 0)) > 0 ) {
+	// the loop
+	while( (n = recv(source, buffer, 1023, 0)) > 0 ) {
 		buffer[n] = '\0';
-		printf("\nReceived from client: %s", buffer);
+		printf("\nReceived from source: %s", buffer);
 		
-		if(send(client.serversock, buffer, n, 0) < 0) {
-			perror("Error transmitting to server");
+		if(send(destination, buffer, n, 0) < 0) {
+			perror("Error transmitting to destination");
 			return 0;
 		}
 		
 		totaln+= n;
 	}
 	
-	// client disconnected or error
+	// disconnection or error
 	if(totaln == 0) {
-		if(n < 0) perror("Error receiving from client");
-		return 0;
-	}
-	
-	// from server to client
-	while( (n = recv(client.serversock, buffer, 15, 0)) > 0 ) {
-		buffer[n] = '\0';
-		printf("\nReceived from server: %s\n", buffer);
-		
-		if(send(client.clientsock, buffer, n, 0) < 0) {
-			perror("Error transmitting to client");
-			return 0;
-		}
-	}
-	
-	// error from server
-	if(n < 0) {
-		perror("Error receiving from server");
+		if(n < 0) perror("Error in transmission");
 		return 0;
 	}
 	
