@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <netdb.h>
 
 #define DEFAULT_HOST "dubhe.anu.edu.au"
 #define PG_DEF_PORT 5432
@@ -36,7 +37,7 @@ SOCKET make_initial_socket(int port);
 
 ADDRINFO* find_remote_server(char* remotehost, int remoteport);
 
-int add_client(int initsock, SOCKADDR* dbserver, Client clients[], int* num_clients, int* highest_fd);
+int add_client(int initsock, ADDRINFO* serverinfo, Client clients[], int* num_clients, int* highest_fd);
 
 int transfer_data(Client client);
 

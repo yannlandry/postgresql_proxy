@@ -18,7 +18,7 @@ int main (int argc, char *argv[]) {
 	char* remotehost = DEFAULT_HOST;
 	parse_options(argc, argv, &localport, &remoteport, &remotehost);
 
-	printf("%s - listening on TCP port %d and will some day connect to %s:%d\n",
+	printf("%s - listening on TCP port %d and will connect to %s:%d\n",
 		argv[0], localport, remotehost, remoteport);
 	
 	/* Make a few things regarding clients */
@@ -30,7 +30,7 @@ int main (int argc, char *argv[]) {
 	fd_set sockset;
 	
 	/* Make a few things regarding the db server */
-	ADDRINFO* dbserver = find_remote_server(remotehost, remoteport);
+	ADDRINFO* serverinfo = find_remote_server(remotehost, remoteport);
 	
 	while(1) {
 		FD_ZERO(&sockset);
@@ -46,7 +46,7 @@ int main (int argc, char *argv[]) {
 		
 		// if it's our initial socket, add connection
 		if(FD_ISSET(initsock, &sockset)) {
-			if(add_client(initsock, dbserver, clients, &num_clients, &highest_fd) == 0) {
+			if(add_client(initsock, serverinfo, clients, &num_clients, &highest_fd) == 0) {
 				perror("Problem while connecting client to server, skipping");
 				continue;
 			}
@@ -64,7 +64,8 @@ int main (int argc, char *argv[]) {
 		}
 	}
 	
-	free(res);
+	close(initsock);
+	free(serverinfo);
 	
 	return 0;
 }
@@ -119,16 +120,16 @@ ADDRINFO* find_remote_server(char* remotehost, int remoteport) {
 	ADDRINFO* ret;	
 	
 	ADDRINFO hints;
-	bzero(hints, sizeof(hints));
-	hints.ai_family = AF_INET6;
+	bzero((void*) &hints, sizeof(hints));
+	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	
 	char port[6]; // large enough to hold "65535\0"
 	bzero(port, sizeof(port));
-	itoa(remoteport, port);
+	sprintf(port, "%d", remoteport);
 	
 	int e;
-	if(e = getaddrinfo(remotehost, port, &hints, &ret)) {
+	if( (e = getaddrinfo(remotehost, port, &hints, &ret)) != 0 ) {
 		fprintf(stderr, "getaddrinfo: %s", gai_strerror(e));
 		exit(-1);
 	}
@@ -137,7 +138,7 @@ ADDRINFO* find_remote_server(char* remotehost, int remoteport) {
 }
 
 
-int add_client(int initsock, SOCKADDR* dbserver, Client clients[], int* num_clients, int* highest_fd) {
+int add_client(int initsock, ADDRINFO* serverinfo, Client clients[], int* num_clients, int* highest_fd) {
 	SOCKADDR_IN csin; // why do we even create this?
 	bzero((void*) &csin, sizeof(csin));
 	socklen_t sizeofcsin = sizeof(csin);
@@ -148,10 +149,10 @@ int add_client(int initsock, SOCKADDR* dbserver, Client clients[], int* num_clie
 		return 0;
 	
 	// setup socket to server for this client
-	SOCKET newssock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+	SOCKET newssock = socket(serverinfo->ai_family, serverinfo->ai_socktype, serverinfo->ai_protocol);
 	if(newssock < 0)
 		return 0;
-	if(connect(sock, res->ai_addr, res->ai_addrlen) != 0)
+	if(connect(newssock, serverinfo->ai_addr, serverinfo->ai_addrlen) != 0)
 		return 0;
 	
 	// adjust max fd if required
@@ -167,14 +168,17 @@ int add_client(int initsock, SOCKADDR* dbserver, Client clients[], int* num_clie
 }
 
 
+int dostuff() { printf("\nhello there\n"); return 1; }
+
+
 int transfer_data(Client client) {
 	char buffer[1024];
 	int n = 0, totaln = 0;
 	
 	// from client to server
-	while( (n = recv(client.clientsock, buffer, 1023, 0)) > 0 ) {
+	while( dostuff() && (n = recv(client.clientsock, buffer, 15, 0)) > 0 ) {
 		buffer[n] = '\0';
-		printf("Received from client: %s", buffer);
+		printf("\nReceived from client: %s", buffer);
 		
 		if(send(client.serversock, buffer, n, 0) < 0) {
 			perror("Error transmitting to server");
@@ -191,9 +195,9 @@ int transfer_data(Client client) {
 	}
 	
 	// from server to client
-	while( (n = recv(client.serversock, buffer, 1023, 0)) > 0 ) {
+	while( (n = recv(client.serversock, buffer, 15, 0)) > 0 ) {
 		buffer[n] = '\0';
-		printf("Received from server: %s", buffer);
+		printf("\nReceived from server: %s\n", buffer);
 		
 		if(send(client.clientsock, buffer, n, 0) < 0) {
 			perror("Error transmitting to client");
@@ -215,8 +219,10 @@ void remove_client(Client clients[], int i, int* num_clients) {
 	// close socket with server
 	close(clients[i].serversock);
 	
-	// close socket with client and delete client
+	// close socket with client
 	close(clients[i].clientsock);
+	
+	// delete client object
 	memmove(clients+i, clients+i+1, (*num_clients-i-1) * sizeof(Client));
 	--(*num_clients);
 }
