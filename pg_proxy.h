@@ -22,6 +22,7 @@ typedef int SOCKET;
 typedef struct sockaddr_in SOCKADDR_IN;
 typedef struct sockaddr SOCKADDR;
 typedef struct in_addr IN_ADDR;
+typedef struct addrinfo ADDRINFO;
 
 typedef struct {
 	SOCKET clientsock;
@@ -33,7 +34,9 @@ void parse_options(int argc, char* argv[], int* localport, int* remoteport, char
 
 SOCKET make_initial_socket(int port);
 
-int add_client(int initsock, Client clients[], int* num_clients, int* highest_fd);
+ADDRINFO* find_remote_server(char* remotehost, int remoteport);
+
+int add_client(int initsock, SOCKADDR* dbserver, Client clients[], int* num_clients, int* highest_fd);
 
 int transfer_data(Client client);
 
