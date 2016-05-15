@@ -9,14 +9,16 @@
 
 
 int main (int argc, char *argv[]) {
-	
+	// for debug purposes
+	setbuf(stdout, NULL);
+
 	/* Arguments n stuff */
 	int localport = PG_DEF_PORT;
 	int remoteport = PG_DEF_PORT;
 	char *remotehost = DEFAULT_HOST;
 	parse_options(argc, argv, &localport, &remoteport, &remotehost);
 
-	printf("%s - listening on TCP port %d and will connect to %s:%d\n",
+	printf("%s - listening on TCP port %d and will some day connect to %s:%d\n",
 		argv[0], localport, remotehost, remoteport);
 	
 	/* Make a few things */
@@ -82,7 +84,7 @@ void parse_options(int argc, char* argv[], int* localport, int* remoteport, char
 }
 
 
-int make_initial_socket(int port) {
+SOCKET make_initial_socket(int port) {
 	SOCKET initsock = socket(AF_INET, SOCK_STREAM, 0);
 	if(initsock < 0) {
 		perror("Invalid initial socket created");
@@ -141,7 +143,7 @@ int transfer_data(Client client) {
 	buffer[n] = '\0';
 	
 	// THE PART WHERE WE TRANSMIT TO THE SERVER AND OTHER STUFF
-	printf("We aren't transmitting yet, but here is the message: %s", buffer);
+	printf("We aren't transmitting yet, but here is the message: %s\n", buffer);
 	
 	return n;
 }
@@ -151,6 +153,5 @@ void remove_client(Client clients[], int i, int* num_clients) {
 	// close socket with server
 	
 	memmove(clients+i, clients+i+1, (*num_clients-i-1) * sizeof(Client));
+	--(*num_clients);
 }
-
-

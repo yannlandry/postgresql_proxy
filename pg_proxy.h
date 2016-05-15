@@ -31,7 +31,7 @@ typedef struct {
 #define OPT_STR "h:l:p:"
 void parse_options(int argc, char* argv[], int* localport, int* remoteport, char** remotehost);
 
-int make_initial_socket(int port);
+SOCKET make_initial_socket(int port);
 
 int add_client(int initsock, Client clients[], int* num_clients, int* highest_fd);
 
