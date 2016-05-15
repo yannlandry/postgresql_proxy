@@ -169,34 +169,45 @@ int add_client(int initsock, SOCKADDR* dbserver, Client clients[], int* num_clie
 
 int transfer_data(Client client) {
 	char buffer[1024];
+	int n = 0, totaln = 0;
 	
-	// receiving from client
-	int n = recv(client.clientsock, buffer, 1023, 0);
-	if(n <= 0) {
-		if(n != 0) perror("Error receiving from client");
-		return 0;
-	}
-	buffer[n] = '\0';
-	
-	// transmitting to server
-	printf("Transmission: %s\n", buffer);
-	
-	if(send(client.serversock, buffer, n, 0) < 0) {
-		perror("Error transmitting to server");
-		return 0;
+	// from client to server
+	while( (n = recv(client.clientsock, buffer, 1023, 0)) > 0 ) {
+		buffer[n] = '\0';
+		printf("Received from client: %s", buffer);
+		
+		if(send(client.serversock, buffer, n, 0) < 0) {
+			perror("Error transmitting to server");
+			return 0;
+		}
+		
+		totaln+= n;
 	}
 	
-	// receiving from server
-	n = recv(client.serversock, buffer, 1023, 0);
-	if(n <= 0) {
-		if(n != 0) perror("Error receiving from server");
+	// client disconnected or error
+	if(totaln == 0) {
+		if(n < 0) perror("Error receiving from client");
 		return 0;
 	}
-	buffer[n] = '\0';
 	
-	printf("Back to client: %s\n", buffer);
+	// from server to client
+	while( (n = recv(client.serversock, buffer, 1023, 0)) > 0 ) {
+		buffer[n] = '\0';
+		printf("Received from server: %s", buffer);
+		
+		if(send(client.clientsock, buffer, n, 0) < 0) {
+			perror("Error transmitting to client");
+			return 0;
+		}
+	}
 	
-	return n;
+	// error from server
+	if(n < 0) {
+		perror("Error receiving from server");
+		return 0;
+	}
+	
+	return totaln;
 }
 
 
