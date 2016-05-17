@@ -19,6 +19,8 @@
 
 #define MAX_CLIENTS 128
 
+#define BUFSIZE 2000
+
 typedef int SOCKET;
 typedef struct sockaddr_in SOCKADDR_IN;
 typedef struct sockaddr SOCKADDR;
