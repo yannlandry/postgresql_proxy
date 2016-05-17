@@ -47,7 +47,6 @@ int main (int argc, char *argv[]) {
 			FD_SET(clients[i].serversock, &sockset);
 		}
 
-		printf("select...\n");
 		if(select(highest_fd+1, &sockset, NULL, NULL, NULL) < 0) {
 			perror("Error at select");
 			exit(-1);
@@ -56,7 +55,7 @@ int main (int argc, char *argv[]) {
 		// if it's our initial socket, add connection
 		if(FD_ISSET(initsock, &sockset)) {
 			if(add_client(initsock, serverinfo, clients, &num_clients, &highest_fd) == 0) {
-				perror("Problem while connecting client to server, skipping");
+				perror("Problem while connecting client to server");
 				continue;
 			}
 		}
@@ -135,7 +134,7 @@ ADDRINFO* find_remote_server(char* remotehost, int remoteport) {
 
 	ADDRINFO hints;
 	bzero((void*) &hints, sizeof(hints));
-	hints.ai_family = AF_INET;
+	hints.ai_family = AF_INET6;
 	hints.ai_socktype = SOCK_STREAM;
 
 	char port[6]; // large enough to hold "65535\0"
@@ -188,7 +187,7 @@ int transfer_data(SOCKET source, SOCKET destination) {
 
 	int n = read(source, buffer, BUFSIZE);
 	buffer[n] = '\0';
-	printf("\nReceived from source: %s", buffer);
+	printf("Transiting %i->%i (size=%i): %s\n", source, destination, n, buffer);
 
 	if(write(destination, buffer, n) < 0) {
 		perror("Error transmitting to destination");
