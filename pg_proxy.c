@@ -28,12 +28,13 @@ int main (int argc, char *argv[]) {
 		argv[0], localport, remotehost, remoteport);
 
 	/* Make a few things regarding clients */
-	SOCKET initsock = make_initial_socket(localport);
-	int num_clients = 0;
-	int highest_fd = initsock; // for now
+	ClientList clients;
+	bzero((void*) &clients, sizeof(clients));
 
-	Client clients[MAX_CLIENTS];
+	SOCKET initsock = make_initial_socket(localport);
+
 	fd_set sockset;
+	int highest_fd = initsock; // for now
 
 	/* Make a few things regarding the db server */
 	ADDRINFO* serverinfo = find_remote_server(remotehost, remoteport);
@@ -42,9 +43,9 @@ int main (int argc, char *argv[]) {
 		FD_ZERO(&sockset);
 
 		FD_SET(initsock, &sockset);
-		for(i = 0; i < num_clients; ++i) {
-			FD_SET(clients[i].clientsock, &sockset);
-			FD_SET(clients[i].serversock, &sockset);
+		for(i = 0; i < clients.count; ++i) {
+			FD_SET(clients.list[i].clientsock, &sockset);
+			FD_SET(clients.list[i].serversock, &sockset);
 		}
 
 		if(select(highest_fd+1, &sockset, NULL, NULL, NULL) < 0) {
@@ -54,7 +55,7 @@ int main (int argc, char *argv[]) {
 
 		// if it's our initial socket, add connection
 		if(FD_ISSET(initsock, &sockset)) {
-			if(add_client(initsock, serverinfo, clients, &num_clients, &highest_fd) == 0) {
+			if(add_client(initsock, serverinfo, &clients, &highest_fd) == 0) {
 				perror("Problem while connecting client to server");
 				continue;
 			}
@@ -62,15 +63,15 @@ int main (int argc, char *argv[]) {
 
 		// otherwise find what's talking
 		else {
-			for(i = 0; i < num_clients; ++i) {
-				if(FD_ISSET(clients[i].clientsock, &sockset)) {
-					if(transfer_data(clients[i].clientsock, clients[i].serversock) == 0) {
-						remove_client(clients, i, &num_clients);
+			for(i = 0; i < clients.count; ++i) {
+				if(FD_ISSET(clients.list[i].clientsock, &sockset)) {
+					if(transfer_data(clients.list[i].clientsock, clients.list[i].serversock) == 0) {
+						remove_client(&clients, i);
 					}
 				}
-				else if(FD_ISSET(clients[i].serversock, &sockset)) {
-					if(transfer_data(clients[i].serversock, clients[i].clientsock) == 0) {
-						remove_client(clients, i, &num_clients);
+				else if(FD_ISSET(clients.list[i].serversock, &sockset)) {
+					if(transfer_data(clients.list[i].serversock, clients.list[i].clientsock) == 0) {
+						remove_client(&clients, i);
 					}
 				}
 			}
@@ -120,7 +121,7 @@ SOCKET make_initial_socket(int port) {
 		exit(-1);
 	}
 
-	if(listen(initsock, MAX_CLIENTS) < 0) {
+	if(listen(initsock, 5) < 0) {
 		perror("Error while listening to initial socket");
 		exit(-1);
 	}
@@ -151,7 +152,7 @@ ADDRINFO* find_remote_server(char* remotehost, int remoteport) {
 }
 
 
-int add_client(int initsock, ADDRINFO* serverinfo, Client clients[], int* num_clients, int* highest_fd) {
+int add_client(int initsock, ADDRINFO* serverinfo, ClientList* clients, int* highest_fd) {
 	SOCKADDR_IN csin; // why do we even create this?
 	bzero((void*) &csin, sizeof(csin));
 	socklen_t sizeofcsin = sizeof(csin);
@@ -172,11 +173,18 @@ int add_client(int initsock, ADDRINFO* serverinfo, Client clients[], int* num_cl
 	*highest_fd = newcsock > *highest_fd ? newcsock : *highest_fd;
 	*highest_fd = newssock > *highest_fd ? newssock : *highest_fd;
 
+	// store everything
+	// resize or create array?
+	if(clients->count >= clients->space) {
+		if(clients->space == 0)	clients->space = 16;
+		else					clients->space*= 2;
+		clients->list = (Client*)realloc(clients->list, clients->space * sizeof(Client));
+	}
+
 	// create client object
-	Client newc;
-	newc.clientsock = newcsock;
-	newc.serversock = newssock;
-	clients[(*num_clients)++] = newc;
+	clients->list[clients->count].clientsock = newcsock;
+	clients->list[clients->count].serversock = newssock;
+	clients->count+= 1;
 
 	return 1;
 }
@@ -204,14 +212,19 @@ int transfer_data(SOCKET source, SOCKET destination) {
 }
 
 
-void remove_client(Client clients[], int i, int* num_clients) {
+void remove_client(ClientList* clients, int i) {
 	// close socket with server
-	close(clients[i].serversock);
+	close(clients->list[i].serversock);
 
 	// close socket with client
-	close(clients[i].clientsock);
+	close(clients->list[i].clientsock);
 
 	// delete client object
-	memmove(clients+i, clients+i+1, (*num_clients-i-1) * sizeof(Client));
-	--(*num_clients);
+	memmove(clients->list+i, clients->list+i+1, (--clients->count-i) * sizeof(Client));
+
+	// shrink array if needed
+	if(clients->space / 4 > clients->count) {
+		clients->space/= 2;
+		clients->list = realloc(clients->list, clients->space);
+	}
 }
