@@ -201,10 +201,9 @@ int transfer_data(Client* client, int fromserver, char* configfile) {
 
 	// if the message contains a username we check if authorized
 	if(fromserver == 0 && check_authentication(client, buffer, configfile) <= 0) {
-		char errmsg[] = "E@@@@SFATAL\0C08006\0MUser and/or IP address not authorized to connect.";
-		printf(">> %lu\n", *((uint32_t*)errmsg+1));
-		*((uint32_t*)errmsg+1) = strlen(errmsg)+1;
-		write(client->clientsock, errmsg, strlen(errmsg)+1);
+		char errmsg[] = "E\0\0\0\0SFATAL\0C08006\0MUser and/or IP address not authorized to connect.";
+		*((uint32_t*)(errmsg+1)) = sizeof(errmsg);
+		write(client->clientsock, errmsg, sizeof(errmsg));
 		
 		fprintf(stderr, "Unauthorized user connected, disconnecting");
 		return 0;
