@@ -51,4 +51,6 @@ int transfer_data(Client* client, int fromserver, char* configfile);
 
 void remove_client(ClientList* clients, int i);
 
-int check_authentication(Client* client, char* buffer, char* configfile);
+int check_authentication(Client* client, char* message, char* configfile);
+
+int detect_username(char* message, char* username);

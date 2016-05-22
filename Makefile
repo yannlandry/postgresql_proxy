@@ -5,7 +5,7 @@ TARGET=pg_proxy
 
 all:	$(TARGET)
 
-pg_proxy: pg_proxy.c pg_proxy.h
+pg_proxy: pg_proxy2.c pg_proxy2.h
 	$(CC) $(CFLAGS) -o $@ $<
 
 clean:

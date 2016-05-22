@@ -5,7 +5,7 @@
  * by Robert (bob) Edwards, April 2016
  */
 
-#include "pg_proxy.h"
+#include "pg_proxy2.h"
 
 
 int dostuff() { printf("\nhello there\n"); return 1; }
@@ -23,7 +23,7 @@ int main (int argc, char *argv[]) {
 	int remoteport = PG_DEF_PORT;
 	char* remotehost = DEFAULT_HOST;
 	char* configfile = DEFAULT_CONFIG;
-	parse_options(argc, argv, &localport, &remoteport, &remotehost);
+	parse_options(argc, argv, &localport, &remoteport, &remotehost, &configfile);
 
 	printf("%s - listening on TCP port %d and will connect to %s:%d\n",
 		argv[0], localport, remotehost, remoteport);
@@ -66,7 +66,7 @@ int main (int argc, char *argv[]) {
 		else {
 			for(i = 0; i < clients.count; ++i) {
 				if(FD_ISSET(clients.list[i].clientsock, &sockset) || FD_ISSET(clients.list[i].serversock, &sockset)) {
-					if(transfer_data(&clients.list[i], FD_ISSET(clients.list[i].serversock, &sockset)) == 0) {
+					if(transfer_data(&clients.list[i], FD_ISSET(clients.list[i].serversock, &sockset), configfile) == 0) {
 						remove_client(&clients, i);
 					}
 				}
@@ -133,7 +133,7 @@ ADDRINFO* find_remote_server(char* remotehost, int remoteport) {
 
 	ADDRINFO hints;
 	bzero((void*) &hints, sizeof(hints));
-	hints.ai_family = AF_INET6;
+	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 
 	char port[6]; // large enough to hold "65535\0"
@@ -200,8 +200,12 @@ int transfer_data(Client* client, int fromserver, char* configfile) {
 	printf("Transiting %i->%i (size=%i): %s\n", source, destination, n, buffer);
 
 	// if the message contains a username we check if authorized
-	if(check_authentication(client, buffer, configfile) <= 0) {
-		// send error message to psql client
+	if(fromserver == 0 && check_authentication(client, buffer, configfile) <= 0) {
+		char errmsg[] = "E@@@@SFATAL\0C08006\0MUser and/or IP address not authorized to connect.";
+		printf(">> %lu\n", *((uint32_t*)errmsg+1));
+		*((uint32_t*)errmsg+1) = strlen(errmsg)+1;
+		write(client->clientsock, errmsg, strlen(errmsg)+1);
+		
 		fprintf(stderr, "Unauthorized user connected, disconnecting");
 		return 0;
 	}
@@ -242,13 +246,11 @@ void remove_client(ClientList* clients, int i) {
 // so it can be used in a condition
 int freebuf(char* buf) { free(buf); return 1; }
 
-int check_authentication(Client* client, char* buffer, char* configfile) {
+int check_authentication(Client* client, char* message, char* configfile) {
 	// check if buffer contains a username, otherwise return
-	if(1)
+	char client_username[64];
+	if(detect_username(message, client_username) == 0)
 		return 1;
-	
-	// extract username from string
-	char client_username[64] = "bob";
 	
 	// variables for values extracted from file
 	char username[64];
@@ -263,11 +265,11 @@ int check_authentication(Client* client, char* buffer, char* configfile) {
 	FILE* file = fopen(configfile, "r");
 	
 	// now, read
-	while(freebuf(buffer) && getline(&buffer, &bufsize, file)) {
+	while(freebuf(buffer) && getline(&buffer, &bufsize, file) > 0) {
 		char* cursor = buffer;
 		
 		// get username
-		while(*cursor != ':' || *cursor != '\0')
+		while(*cursor != ':' && *cursor != '\0')
 			++cursor;
 		
 		if(*cursor == '\0') continue;
@@ -304,11 +306,23 @@ int check_authentication(Client* client, char* buffer, char* configfile) {
 		
 		// match the IPs
 		uint32_t mask = (uint32_t)(-1) << (32 - match);
-		if(ntohl(client->address.s_addr) & mask == ntohl(ip.s_addr) & mask) {
+		if((ntohl(client->address.s_addr) & mask) == (ntohl(ip.s_addr) & mask)) {
 			free(buffer);
+			fclose(file);
 			return 1;
 		}
 	}
 	
+	fclose(file);
 	return 0;
+}
+
+
+int detect_username(char* message, char* username) {
+	username[0] = 'b';
+	username[1] = 'o';
+	username[2] = 'b';
+	username[3] = '\0';
+	
+	return 1;
 }
